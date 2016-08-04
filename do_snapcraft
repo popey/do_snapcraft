@@ -12,8 +12,9 @@
 # required for snapcraft to work
 
 if [ $# -eq 0 ]
-  then
-    echo "No arguments supplied. Specify app name."
+then
+  echo "No arguments supplied. Specify app name."
+  exit 99
 fi
 
 APP=$1
