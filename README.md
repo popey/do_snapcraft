@@ -7,7 +7,7 @@ do_snapcraft uses [doctl](https://www.digitalocean.com/community/tutorials/how-t
 
 * A Digital Ocean account
  * Sign up using https://m.do.co/c/f9f96ea43bd3 to get $10 free credit
-* An SSH key [configured](https://www.digitalocean.com/community/tutorials/how-to-use-ssh-keys-with-digitalocean-droplets) in the digiatl ocean control panel
+* An SSH key [configured](https://www.digitalocean.com/community/tutorials/how-to-use-ssh-keys-with-digitalocean-droplets) in the digital ocean control panel
 * [doctl](https://www.digitalocean.com/community/tutorials/how-to-use-doctl-the-official-digitalocean-command-line-client) command line tool in your path and correctly configured and authenticated to digital ocean
 
 # Installation
