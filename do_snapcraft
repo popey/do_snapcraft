@@ -1,0 +1,120 @@
+#!/bin/bash
+# do_snapcraft - Script to use Digital Ocean droplets to remotely build snaps using snapcraft.
+# Pre-requisites:-
+#   Digital Ocean account setup with credit, and with SSH key used in SSHKEY variable
+#   doctl installed and authed against Digital Ocean account as per:-
+# https://www.digitalocean.com/community/tutorials/how-to-use-doctl-the-official-digitalocean-command-line-client
+#   (see sections "Download a Release from GitHub" and "Authenticating with DigitalOcean")
+# Usage:-
+#   do_snapcraft.sh foo
+# Where 'foo' is the name of a subdirectory beneath current working directory.
+# Directory 'foo' should contain snapcraft.yaml at the top level and any other files
+# required for snapcraft to work
+
+if [ $# -eq 0 ]
+  then
+    echo "No arguments supplied. Specify app name."
+fi
+
+APP=$1
+TMPFILE=$(mktemp)
+
+# Enter SSH Key fingerprint here:-
+SSHKEY=""
+
+# Droplet name generated to cater for multiple droplets generated in succession
+DROPLET=$APP-$(date +%Y-%m-%d-%H%M%S-%N)
+
+# To prevent ssh asking to allow key usage
+SSH_OPTIONS="-q -o StrictHostKeyChecking=no"
+
+# Regions can be:- nyc1, sfo1, nyc2, ams2, agp1, lon1, nyc3, ams3, fra1, tor1, sfo2, blr1
+# Use "doctl compute region list" to get full up to date region list
+REGION="lon1"
+
+# Image used to run snapcraft in
+# Use "doctl compute image list" to get full up to date image list
+IMAGE="ubuntu-16-04-x64"
+
+# 1gb is typically sufficient RAM for most projects. 512mb is smallest
+# Use "doctl compute size list" to get full up to date size list
+SIZE="512mb"
+
+echo "* Creating $SIZE droplet:- $DROPLET in region $REGION using $IMAGE base image."
+doctl compute droplet create $DROPLET --region $REGION --image $IMAGE --size $SIZE --ssh-keys $SSHKEY --wait
+if [ $? -ne 0 ]
+then
+  echo "*** Error creating droplet $DROPLET"
+  exit 1
+fi
+
+echo "* Get IP of droplet"
+IP=$(doctl compute droplet list $DROPLET | tail -n 1 | awk '{ print $3}')
+if [ $? -ne 0 ]
+then
+  echo "*** Error getting IP of droplet $DROPLET"
+  exit 2
+fi
+
+# In theory ssh should be available as soon as the droplet starts, really
+# though, we have to wait a tiny bit.
+echo "* Wait a bit for ssh daemon"
+echo " "
+
+for i in `seq 1 10`;
+do
+  ssh -q $SSH_OPTIONS root@$IP exit
+  if [ $? -eq 0 ]
+  then
+    break
+  fi
+  echo -n "."
+  sleep 2
+done
+
+echo " "
+
+echo "* Upload app"
+scp $SSH_OPTIONS -r $APP root@$IP:~/
+if [ $? -ne 0 ]
+then
+  echo "*** Failed to upload $APP to droplet $DROPLET"
+  exit 3
+fi
+
+echo "* Create snapcraft setup & launch script"
+# TODO - if the remote machine is an image which isn't Ubuntu then
+#        we should modify this script to install snapcraft in other
+#        ways
+echo "apt -qq update && apt -qq install -y snapd snapcraft" > $TMPFILE
+echo "cd $APP" >> $TMPFILE
+echo "snapcraft" >> $TMPFILE
+
+echo "* Upload snapcraft setup & launch script"
+scp $SSH_OPTIONS $TMPFILE root@$IP:~/build.sh
+if [ $? -ne 0 ]
+then
+  echo "*** Failed to upload script to droplet $DROPLET"
+  exit 4
+fi
+
+echo "* Delete local temp file"
+rm $TMPFILE
+
+echo "* Start install & build script"
+ssh $SSH_OPTIONS root@$IP sh ./build.sh
+
+echo "* Finished"
+notify-send "Finished $APP on $IP"
+
+echo "* Droplet is still running"
+echo "* SSH to it with:-"
+echo doctl compute ssh $DROPLET
+
+echo "* Launch file manager to browse result with the following command:-"
+echo "nautilus ssh://root@$IP/root/$APP"
+
+echo " "
+echo "* When finished, use this to remove the DO droplet:-"
+echo doctl compute droplet delete $DROPLET
+echo " "
